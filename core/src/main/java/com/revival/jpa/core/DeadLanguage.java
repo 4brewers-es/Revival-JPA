@@ -1,6 +1,8 @@
 package com.revival.jpa.core;
 
 import com.revival.jpa.exceptions.RevivalException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.sql.Connection;
@@ -12,6 +14,9 @@ import java.sql.ResultSet;
  * Allows fluent SQL execution for Juniors without writing actual SQL.
  */
 public class DeadLanguage<T> {
+    // Initialize SLF4J Logger
+    private static final Logger logger = LoggerFactory.getLogger(DeadLanguage.class);
+
     private final Class<T> clazz;
     private final Connection connection;
     private String[] columns;
@@ -21,41 +26,27 @@ public class DeadLanguage<T> {
         this.connection = connection;
     }
 
-    /**
-     * Specifies specific fields to fetch.
-     */
     public DeadLanguage<T> fill(String... fields) {
         this.columns = fields;
         return this;
     }
 
-    /**
-     * Magic method: Uses reflection to automatically select all fields in the
-     * class.
-     * Perfect for "SELECT *" behavior without writing the columns manually.
-     */
     public DeadLanguage<T> all() {
         Field[] fields = clazz.getDeclaredFields();
         this.columns = new String[fields.length];
 
-        // Extract all variable names from the Java class
         for (int i = 0; i < fields.length; i++) {
             this.columns[i] = fields[i].getName();
         }
         return this;
     }
 
-    /**
-     * Executes the query filtering by ID and hydrates the object.
-     */
     public T from(Object id) {
         if (columns == null || columns.length == 0) {
             throw new RevivalException("You must call fill() or all() before from() with at least one column.");
         }
 
         String tableName = clazz.getSimpleName().toLowerCase();
-        // If the user requested 'all', we could use '*', but specifying columns is
-        // safer for mapping
         String selectedColumns = String.join(", ", columns);
         String sql = "SELECT " + selectedColumns + " FROM " + tableName + " WHERE id = ?";
 
@@ -74,10 +65,6 @@ public class DeadLanguage<T> {
         }
     }
 
-    /**
-     * Deletes a record directly from the database by its ID.
-     * Terminal operation: does not return 'this', but executes immediately.
-     */
     public void destroy(Object id) {
         String tableName = clazz.getSimpleName().toLowerCase();
         String sql = "DELETE FROM " + tableName + " WHERE id = ?";
@@ -86,20 +73,17 @@ public class DeadLanguage<T> {
             stmt.setObject(1, id);
             int affectedRows = stmt.executeUpdate();
 
+            // Replaced System.out with appropriate log levels
             if (affectedRows == 0) {
-                System.out.println("Revival Info: Tried to destroy " + clazz.getSimpleName() + " with ID " + id
-                        + " but it didn't exist.");
+                logger.warn("Tried to destroy {} with ID {} but it didn't exist.", clazz.getSimpleName(), id);
             } else {
-                System.out.println("Revival: Successfully destroyed " + clazz.getSimpleName() + " with ID " + id);
+                logger.info("Successfully destroyed {} with ID {}", clazz.getSimpleName(), id);
             }
         } catch (Exception e) {
             throw new RevivalException("Could not destroy entity " + clazz.getSimpleName() + " with ID " + id, e);
         }
     }
 
-    /**
-     * Converts a SQL ResultSet into a Java Object using Reflection.
-     */
     private T hydrate(ResultSet rs) {
         T instance;
         try {
@@ -118,8 +102,9 @@ public class DeadLanguage<T> {
                 field.set(instance, value);
 
             } catch (NoSuchFieldException e) {
-                System.err.println("Revival Warning: Column '" + colName + "' requested, but there is no attribute '"
-                        + colName + "' in class " + clazz.getSimpleName());
+                // Replaced System.err with Logger warning
+                logger.warn("Column '{}' requested, but there is no attribute '{}' in class {}", colName, colName,
+                        clazz.getSimpleName());
             } catch (Exception e) {
                 throw new RevivalException("Could not inject database value into field '" + colName + "' of class "
                         + clazz.getSimpleName() + ". Check data types.", e);

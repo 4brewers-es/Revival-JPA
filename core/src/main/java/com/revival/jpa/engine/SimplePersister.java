@@ -6,6 +6,8 @@ import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.revival.jpa.exceptions.RevivalException;
+
 /**
  * Handles the automatic persistence (Insert/Update) of any object.
  * Uses Reflection to inspect the object's state and generate safe SQL.
@@ -31,8 +33,7 @@ public class SimplePersister {
             idField = clazz.getDeclaredField("id");
             idField.setAccessible(true);
         } catch (NoSuchFieldException e) {
-            throw new RuntimeException(
-                    "Revival Error: Entity " + clazz.getSimpleName() + " must have a field named 'id'.");
+            throw new RevivalException("Entity " + clazz.getSimpleName() + " must have a field named 'id'.");
         }
 
         Object idValue = idField.get(entity);
