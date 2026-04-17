@@ -1,7 +1,10 @@
 package com.revival.jpa.core;
 
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
+import com.revival.jpa.engine.SimplePersister;
+import com.revival.jpa.exceptions.RevivalException;
 
 /**
  * Main entry point for the Revival JPA.
@@ -13,6 +16,19 @@ public class Revival {
     // El constructor recibe la conexión (inyectada por el usuario o un pool)
     public Revival(Connection connection) {
         this.connection = connection;
+    }
+
+    public static Revival connectToMariaDB(String host, int port, String database, String user, String password) {
+        String url = String.format("jdbc:mariadb://%s:%d/%s", host, port, database);
+        try {
+            Connection conn = DriverManager.getConnection(url, user, password);
+            System.out.println("Revival: Successfully connected to MariaDB at " + host);
+            return new Revival(conn);
+        } catch (SQLException e) {
+            // ¡Adiós RuntimeException, hola RevivalException!
+            throw new RevivalException("Could not connect to database '" + database
+                    + "'. Check credentials and ensure MariaDB is running.", e);
+        }
     }
 
     /**

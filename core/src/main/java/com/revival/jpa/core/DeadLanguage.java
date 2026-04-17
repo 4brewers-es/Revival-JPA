@@ -1,10 +1,11 @@
 package com.revival.jpa.core;
 
+import com.revival.jpa.exceptions.RevivalException; // <-- Importamos nuestra excepción
+
 import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.Arrays;
 
 /**
  * The Dead Language query builder.
@@ -20,67 +21,67 @@ public class DeadLanguage<T> {
         this.connection = connection;
     }
 
-    /**
-     * Specifies which fields to bring from the database.
-     */
     public DeadLanguage<T> fill(String... fields) {
         this.columns = fields;
         return this;
     }
 
-    /**
-     * Executes the query filtering by ID and hydrates the object.
-     * Prevents SQL injection by using PreparedStatement.
-     */
     public T from(Object id) {
         if (columns == null || columns.length == 0) {
-            throw new RuntimeException("Revival Error: You must call fill() before from() with at least one column.");
+            throw new RevivalException("You must call fill() before from() with at least one column.");
         }
 
-        // 1. Construimos el SQL de forma dinámica y segura
         String tableName = clazz.getSimpleName().toLowerCase();
         String selectedColumns = String.join(", ", columns);
         String sql = "SELECT " + selectedColumns + " FROM " + tableName + " WHERE id = ?";
 
-        // 2. Ejecutamos contra la base de datos (Protección contra Inyección SQL)
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setObject(1, id); // Insertamos el ID de forma segura
+            stmt.setObject(1, id);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    return hydrate(rs); // 3. Llenamos el objeto
+                    return hydrate(rs);
                 } else {
-                    return null; // No se encontró el registro
+                    return null;
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Revival SQL Error: Failed to execute 'Dead Language' query: " + sql, e);
+            throw new RevivalException("Failed to execute 'Dead Language' query: " + sql, e);
         }
     }
 
     /**
-     * The Magic Box: Converts a SQL ResultSet into a Java Object using Reflection.
+     * Converts a SQL ResultSet into a Java Object using Reflection.
+     * Uses explicit exception handling to guide Junior developers.
      */
-    private T hydrate(ResultSet rs) throws Exception {
-        // Instanciamos el objeto vacío (requiere constructor sin parámetros)
-        T instance = clazz.getDeclaredConstructor().newInstance();
+    private T hydrate(ResultSet rs) {
+        T instance;
+        try {
+            // Instanciamos el objeto vacío.
+            // Si esto falla, suele ser porque la entidad no tiene constructor vacío.
+            instance = clazz.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new RevivalException("Entity '" + clazz.getSimpleName()
+                    + "' must have a public no-arguments constructor so Revival can create it.", e);
+        }
 
-        // Inyectamos cada columna solicitada en el atributo correspondiente
         for (String colName : columns) {
             try {
-                // Buscamos el atributo en la clase Java
                 Field field = clazz.getDeclaredField(colName);
-                field.setAccessible(true); // Rompemos el private para inyectar directo (JPA Style)
+                field.setAccessible(true);
 
-                // Sacamos el valor de la base de datos y lo metemos en el objeto
                 Object value = rs.getObject(colName);
                 field.set(instance, value);
 
             } catch (NoSuchFieldException e) {
-                // Mensaje amigable para el Junior
+                // Mantenemos el warning amigable en consola, no rompemos la app
                 System.err.println(
                         "Revival Warning: Column '" + colName + "' requested in fill(), but there is no attribute '"
                                 + colName + "' in class " + clazz.getSimpleName());
+            } catch (Exception e) {
+                // Atrapamos errores raros, como intentar meter un String en un int
+                throw new RevivalException("Could not inject database value into field '" + colName + "' of class "
+                        + clazz.getSimpleName() + ". Check data types.", e);
             }
         }
 
