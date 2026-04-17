@@ -8,6 +8,9 @@ import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The Dead Language query builder.
@@ -33,11 +36,21 @@ public class DeadLanguage<T> {
 
     public DeadLanguage<T> all() {
         Field[] fields = clazz.getDeclaredFields();
-        this.columns = new String[fields.length];
 
-        for (int i = 0; i < fields.length; i++) {
-            this.columns[i] = fields[i].getName();
+        // Use a dynamic list to collect only valid database columns
+        List<String> validColumns = new ArrayList<>();
+
+        for (Field field : fields) {
+            int modifiers = field.getModifiers();
+
+            // Skip fields that should not be mapped to the database
+            if (!Modifier.isStatic(modifiers) && !Modifier.isTransient(modifiers)) {
+                validColumns.add(field.getName());
+            }
         }
+
+        // Convert the dynamic list back to our array structure
+        this.columns = validColumns.toArray(new String[0]);
         return this;
     }
 
